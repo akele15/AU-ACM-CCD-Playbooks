@@ -1,0 +1,12 @@
+-   Windows
+-   Autoruns and other Sysinternals from a known good source. Ask White Team for a USB if you aren't allowed to have one/bring one
+-   List logged in users (qwinsta)
+-   If notepad.exe is running you've been breached
+-   Linux/BSD/Nix
+-   .bash_history
+-   ~/.ssh/authorized_keys
+-   lsof -nPi / netstat -ano
+-   know where logs are
+-   diff process list
+-   fuser -k pts/2
+-   Get the incident response forms and learn how to fill them out. Big points! 5 dolla
