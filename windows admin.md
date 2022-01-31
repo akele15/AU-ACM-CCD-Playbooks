@@ -1,3 +1,12 @@
+# TL;DR
+
+role
+1. change passwords on admin account. 
+2. disable uneeded accounts
+3. disable uneeded service
+4. idk something about active directory
+5. install software needed to manage the machine.
+
 -   Event Viewer is your friend
 -   Autoruns is your friend
 -   Process Explorer and TCP View are your friend
@@ -30,9 +39,145 @@ secedit /export /cfg checkme.inf
 -- Edit to to have more secure settings then import onto your target system: 
 secedit /configure /db secedit.sdb /cfg securecheckme.inf
 
+# stuff but good.
+# make a backup admin account 
+```
+net user <name> * /ADD
+net localgroup administrators <name>  /add
+```
+# start changing passwords
+
+```
+Net localgroup administrators >>LocalAdministratorUsers.txt
+Net user {username_here} *
+Net user >>localUsers.txt # useful command to have list of users to diff against
+Net user {username} * 
+```
+
+
+Delete or disable any unnecessary accounts
+
+Disable
+
+```
+Net user accountname /active:no 
+```
+
+Delete
+
+```
+Net user accountname /delete
+```
+## alternative way to disable accounts.
+```
+Get-LocalUser Guest | Disable-LocalUser
+
+Get-LocalUser Administrator | Disable-LocalUser
+```
+
+## short script to change all passwords
+```
+Get-WmiObject win32_useraccount | Foreach-object {
+
+([adsi]("WinNT://"+$_.caption).replace("\","/")).SetPassword("Asecurepassword123!")
+
+}
+
+```
+
+
+# patch time
+
+ If XP/2k3 then PATCH MS08_067
+>    https://docs.microsoft.com/en-us/security-updates/SecurityBulletins/2008/ms08-067
+
+I think this is the site to donwload patch. unsure. 	
+If Vista/7/2k8 then PATCH MS09_050
+> http://www.microsoft.com/security/updates/bulletins/200910.aspx
+
+
+
+# see what smb shares are available
+```
+ net share > shares.txt
+```
+
+
+Delete Unnecessary Shares on the Machine
+
+```
+Net share
+Net share sharename /delete
+```
+
+flush dns cache
+```
+ ipconfig /flushdns
+```
+
+# firewall configuration
+Turn on firewall
+https://www.youtube.com/watch?v=A2jXQPprVXQ
+Remove firewall exceptions 
+https://www.youtube.com/watch?v=azGWLDLM3sc
+
+
+## turn on windows defender
+https://www.youtube.com/watch?v=MqcFLabRc10
+
+
+Delete any scheduled tasks
+
+```
+schtasks /delete /tn * /f
+```
+
+
+Identify running services and processes
+
+```
+Get-service
+Sc query type=service state=all
+Tasklist >>RunningProcesses.Txt
+
+```
+
+```
+wmic service list brief | findstr "Running"
+```
+
+```
+wmic startup list full
+```
+### stop service
+```
+sc stop <serviceName>
+
+```
+
+### turn off teredo 
+is maybe just a windows 10 feature?
+```
+netsh interface teredo set state disabled
+```
+# installing anti virus time
+install AVG for whatever version of windows is running. 
+
+
+## run winpeas to look for more things to fix
+
+https://github.com/carlospolop/PEASS-ng/blob/master/winPEAS/winPEASbat/winPEAS.bat
+
+
+# process explorer
+https://docs.microsoft.com/en-us/sysinternals/downloads/process-explorer
+
+if you see notepad.exe something is wrong. if you see 
+
+
 # stuff
 ### [](https://github.com/mike-bailey/CCDC-Scripts/blob/master/WINDOWS.md#turns-off-remote-desktop)Turns off Remote Desktop
-
+https://www.youtube.com/watch?v=QZEna-w-SEQ
 `reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f`
 
 `reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f`
@@ -50,33 +195,7 @@ if newer than windows 8 turn on defender & firewall and remove exceptions
 
 # actual stuff I wrote
 
-# make a backup admin account 
-```
-net user <name> * /ADD
-net localgroup administrators <name>  /add
-```
-# start changing passwords
 
-```
-Net localgroup administrators >>LocalAdministratorUsers.txt
-Net user {username_here} *
-Net user >>localUsers.txt
-Net user {username} * 
-```
-
-
-Delete or disable any unnecessary accounts
-
-Disable
-
-```
-Net user accountname /active:no 
-```
-
-Delete
-
-```
-Net user accountname /delete
 ```
 
 # Enable Windows Firewall and allow some ports through
@@ -108,30 +227,9 @@ Check for any logged on users
 Query session
 Query user
 Query process
-```
 
 
-Delete Unnecessary Shares on the Machine
 
-```
-Net share
-Net share sharename /delete
-```
-
-Delete any scheduled tasks
-
-```
-schtasks /delete /tn * /f
-```
-
-
-Identify running services and processes
-
-```
-Get-service
-Sc query type=service state=all
-Tasklist >>RunningProcesses.Txt
-```
 
 Setup for Powershell Scripts
 

@@ -1,67 +1,85 @@
--   Upgrade your kernel ASAP +
--   Fail2Ban
--   If ($PHP) then shoot.self; (Fix php.ini)
--   SETUID
--   Create a process list file so IR can diff it +
--   Remove any unused users or services+
--   IPTSTATE is like TCPview for Linux, use it. love it.
--   GRSEC IF YOU HAVE TIME, custom kernels take time to compile but, it's fun to watch Red Teamers attempt privilege escalation on older kernels. -
--   Turn off the ability to change grsec settings via sysctl-
--   Turn on EXEC logging+
--   Watch the audit log for signs of escalation attempts+
--   File Integrity logging pays dividends:-
--   Tripwire-
--   OSSec (has pre-configurations for most *nix)-
--   Nothing new should enter here without you knowing:+
--   /tmp/ (new files or binaries in here are bad news)+
--   .hidden directory is a common place to put stuff +
--   crontab for all users+
--   ~/.ssh/ (and /root/ not just /home)+
--   /etc/
--   Know all SetUID binaries and watch for new ones -
--   Final all 'immutable' files
--   find . | xargs -I file lsattr -a file 2>/dev/null | grep '^....i' +
--   'chattr -i file' to change it back+ 
--   Doing this on / takes a long time, point it where it counts: /etc/, ~/, /tmp/   etc.. etc..+
-
-
-# stuff I wrote 
-alright peeps time for linux harden guide. main goals: decrease attack surface area, monitor for signs of intrution, keep services running. 
+# TL;DR
+Your role includes.
+1. changing passwords on all accounts and disable uneeded acounts
+2. turn on command logging and backup files to diff incase of breach
+4.  upgrade kernel
+5.  install random security software
+6.  look for privilege escalation vectors and remove them. 
+7. monitor for signs of intruders
 
 Warning: something written in this guide is probably wrong. when something doesn't work right google the error message or ask questions. 
 
-step one make accounts and do our rounds to see what is going on.
-# making an account
-first thing things first you are going to want to create your own account on the machine. you will likely be given a root account but it is good practice not to constantly use the for everything.
+# change default password for default login
+passwd
+# open a root shell and change root password and name
 ```
-# adduser <username> sudo
+sudo -i 
+passwd
+usermod -l \<newname> \<oldname># change default password for default login
+passwd
 ```
 
-# list users 
-###  check empty passwords
+
+
+
+# open a root shell and change root password
+sudo -i 
+passwd
+usermod -l \<newname> \<oldname>-   
+
+## make a wheel group and backup admin account
+Using sudo will be restricted to wheel group
 ```
-sudo awk -F: '($2 == "") {print}' /etc/shadow
+groupadd wheel
 ```
-If you see any empty passwords change them with commands below
-
-# todo flesh out
-# /etc/group
-
-Format: admin:*:80:root
-
-Look at group name and user account names. Key groups to look for: admin, wheel, sudo, nopasswdlogin (?). The users for each of these should ONLY be root and your account (and nothing for nopasswdlogin)
-
-/etc/sudoers
-
-Format: %admin ALL=(ALL) ALL
-
-In this case, the admin group has permissions to do whatever it wants. We should probably keep things in the sudoers file to a minimum.
-### check for accounts that are root 
-> awk -F: '($3 == "0") {print}' /etc/passwd
-
-see any delete or change passwd. 
 
 
+_Restrict the use of sudo to the wheel group by configuring **/etc/sudoers**._ _Use **visudo** and uncomment the following:_
+```
+wheel ALL=(ALL) ALL  
+```
+
+_Restrict use of su with pam._ _Uncomment or add the following line to **/etc/pam.d/su**:_
+```
+auth		requirement	pam_wheel.so group=wheel
+```
+
+_while root create an admin account:_
+```
+useradd -mg wheel <admin>
+passwd <admin> 
+exit
+# login as admin and restrict root login and su to <admin>
+sudo -i -u <admin>
+sudo passwd -l root 
+sudo chown <admin>:wheel /bin/su
+```
+\*Use sudo -i -u adminname when performing admin tasks!_
+
+
+## Restrict Login Access
+edit the file 
+/etc/pam.d/system-login
+
+```
+# Set a delay upon authentication failure
+# Lock out a user after 3 repeated failed attempts
+auth optional pam_faildelay.so delay=4000000
+auth required pam_tally2.so deny=3 unlock_time=600 onerr=succeed file=/var/log/tallylog
+```
+
+# Limit processes run by users
+> /etc/security/limits.conf
+
+```
+* soft nproc 100
+* hard nproc 200
+```
+
+
+## prexisting account check
+
+### list users 
 list all 
 ```
 getent passwd 
@@ -70,9 +88,16 @@ list just normal users
 ```
 getent passwd {1000..6000}
 ```
-pay special attention to output of second command. stray accounts not needed for critical services should be deleted
+pay special attention to output of second command. stray accounts not needed for critical services should be locked
+###  check empty passwords
+```
+sudo awk -F: '($2 == "") {print}' /etc/shadow
+```
+If you see any empty passwords change them with commands below
+### check for accounts that are root 
+> awk -F: '($3 == "0") {print}' /etc/passwd
 
-also noted any user without /usr/bin/nologin as their shell should definitely have their password changed at a minimaum or be deleted. 
+see any lock account. 
 
 Delete user
 ```
@@ -84,149 +109,96 @@ usermod -L <user>
 ```
 change password
  ```
- passwd <user>
+passwd <user>
  ```
 
-# idenitifying services running 
-## list services 
-Listing all services could potientially be information overload but skimming it and disabling anything that seems not needed could be useful 
-> systemctl list-unit-files --type=service
 
-how to disable 
- > systemctl disable httpd.service
-	
-## listening ports 
-This will show all ports listening on the machine. you will use this information to set host firewall rules. find the ports the machine's critical services are running on and take note of it. 
+# /etc/group
 
-> netstat -tulpn
+> Format: admin(name):*(idk):80(idk):root(the users in it)
 
-> ss -tulpn
+Look at group name and user account names. Key groups to look for: admin, wheel, sudo, nopasswdlogin (?). The users for each of these should ONLY be root and your account (and nothing for nopasswdlogin)
+> fixing: ( ie leave testuser only in 'root' group and it's primary 'testuser' group):
 
-
-# iptables
- this will be the local firewall software for our box. 
-this will let machine talk on the loopback adrress and is fine
-> sudo iptables -A INPUT -i lo -j ACCEPT
-
-allow traffic on a specific port. You're going to allow the ports used by your critical services 
 ```
-sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+ $ sudo usermod -G root testuser
+``` 
+
+
+> remove user from one group 
+
+```
+sudo gpasswd -d testuser root
+Removing user testuser from group root
 ```
 
-The port number you've allowed follows dport. possibly we need to change tcp if the service running doesn't use  the tcp protocal. 
+/etc/sudoers
 
-Command to drop all other traffic that isn't allowed 
-```
-sudo iptables -A INPUT -j DROP
-```
+Format: %admin ALL=(ALL) ALL
 
-Now take a moment and see if anything is on fire. If so Your priority is keeping services up so delete the drop rule and try to figure out what else you need to allow through the firewall.
+In this case, the admin group has permissions to do whatever it wants. We should probably keep things in the sudoers file to a minimum.
 
-## delete a rule 
-see rules
-```
-sudo iptables -L --line-numbers
-```
-delete unwanted rules 
-```
-sudo iptables -D INPUT <Number>
-```
+stare at this for a bit and look to see if anything looks weird. 
 
-
-## save changes
-debian
-```
-sudo /sbin/iptables–save
-```
-
-redhat 
-```
-sudo /sbin/service iptables save
-```
-
-
+## quick check
+look for keys in the ssh folders and delete them.
+~/.ssh/ (and /root/ not just /home)+
 # breathe 
+Okay we did likely 80 percent of the work. Pat yourself on the back. 
 
-We made some cool progress and did the major stuff. relax for like 15 seconds. then move on . our next goal is to get some baseline knowledge of what the system is like before getting hacked. 
-# easy get baseline stuff to diff later.
 
+# get baseline stuff to diff later.
+``````
 mkdir -p ~/logs/initial (make a folder in your home directory called logs, inside it make a folder called initial)
+``````
 
+``````
 cd ~/logs (change working dir to that new folder)
+``````
 
+``````
 sudo cp -R /var/log/ . (copy the whole log folder!)
+``````
 
+``````
 mv log initial (rename the newly copied folder to something different (preferably that indicates time stamp) yay nested parens)
-
+``````
+``````
 diff -r /var/log initial (compare the current /var/log dir with your copy)
-
+``````
 
 
 Listing running processes:
-
+``````
 ps ax (list all running procs)
+``````
 
+``````
 ps aux username (specify a user to see their procs)
-
+``````
 redirect into a file so you can diff later
-
+> ps ax > psdiff
 
 setuid binaries
+``````
 find / -perm -u=s -type f 2>/dev/null
+``````
 finding new ones is bad. 
+compare like with GTFO bends while you're at it
+> https://gtfobins.github.io/#+suid
 
-# round up of comman service stuff to look at 
-# ssh stuff
-
- **/etc/ssh/sshd_config**
-```
-PermitRootLogin no # disables root loginMaxAuthTries 3 # limits authentication attemptsPasswordAuthentication no # disables password authenticationPermitEmptyPasswords no # disables empty passwordsX11Forwarding no # disables GUI transmissionDebianBanner no # disbales verbose bannerAllowUsers *@XXX.X.XXX.0/24 # restrict users to an IP range
-```
-
-
-Check these files and make sure they are blank / only have information that you put there. These store public keys that are authorized to log in as this user WITHOUT password.
-> ~/.ssh/authorized_keys
-
->/root/.ssh/authorized_keys
-
-if you see stuff in this directory of the user home directory problably want to delete. 
-
-
-
-
+> fix: chmod u-s /path/to/file.
 # Restrict CRON Usage
+check the cron tab of the users you're aware of 
 ```
 crontab -l -u USERNAME
 ```
-check the cron tab of the users you're aware of 
+
 disable cron for everyone but you 
 ```
 echo $(whoami) >> /etc/cron.d/cron.allow# echo ALL >> /etc/cron.d/cron.deny
 ```
 
-# monitor logs
--   /var/log/auth.log --- logs authorization attempts
--   /var/log/daemon.log --- logs background apps
--   /var/log/debug --- logs debugging data
--   /var/log/kern.log --- logs kernel data
--   /var/log/syslog --- logs system data
--   /var/log/faillog --- logs failed logins
-
-# final set of less importnat stuff 
-check host files and clear any uneeded stuff :/etc/hosts 
-unalias -a remove aliases 
-
-## update kernal 
-debian instrutions 
->sudo apt update
-
-get list of linux kernals to update
-
-> aptitude search linux-image
-
-actually install the kernal 
-
->`sudo aptitude install linux-image-4.10.0-trunk-amd64-unsigned linux-headers-4.10.0-trunk-amd64`
 
 # turn on command line logging 
 
@@ -252,15 +224,58 @@ local1.* -/var/log/cmdline
 /etc/init.d/rsyslog restart
 ```
 
-The audit logging will be visible under **/var/log/syslog** and **/var/log/cmdline** and will look like this:
+The audit logging will be visible under **/var/log/syslog** and **/var/log/cmdline** 
 
-maybe try to find an ids to install 
+## update kernal )(debian)
+debian instrutions 
+>sudo apt update
+
+get list of linux kernals to update
+
+> aptitude search linux-image
+
+actually install the kernal 
+
+>`sudo aptitude install linux-image-4.10.0-trunk-amd64-unsigned linux-headers-4.10.0-trunk-amd64`
+## update kernal (redhat)
+> \#**yum update kernel**
+
+you have to restart after a kernel update
+> sudo shutdown -r now
+
+# the great software install phase
 
 
 # if you have a web server
 install mod_security 
 > https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual
-# patrol route 
+
+# ssh 
+
+install fail2ban
+fail to ban
+https://linuxhandbook.com/fail2ban-basic/
+
+### iptstate
+> iptstate
+
+can be used to watch traffic possibly 
+
+# tripwire
+https://www.techrepublic.com/article/how-to-install-and-use-tripwire-to-detect-modified-files-on-ubuntu-server/
+
+monitors for changes in files
+
+
+# ossec
+
+https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-ossec-security-notifications-on-ubuntu-14-04
+
+# php 
+https://tkacz.pro/nginx-and-php-configure-php-ini-file/
+
+
+# patrol route (this is your idle animation)
 > who
 
 shows who's logged in. If you see someone that isn't you panik. Panik very fast. 
@@ -277,18 +292,25 @@ this is also bad news
 look at logs 
 
 check connections to the machine
-
+```
+netstat –nap (Linux),
+netstat –na (Solaris),
+```
 look at processes each user is running. 
+ps aux username
+
 
 use ls -al to check for hidden folders.
 
-repeat. check if anyone needs any help. go get some water. then come back and do it again. 
+check diffs of these files
  > /etc/passwd & /etc/shadow & /etc/sudoers
 
-
+repeat. check if anyone needs any help. go get some water. then come back and do it again. 
  bad news if you see anything here.
 
-  find all immutable files, there should not be any
+
+  
+find all immutable files, 
 I have litterally no clue what this does. 
 >find . | xargs -I file lsattr -a file 2>/dev/null | grep ‘^….i’
 
@@ -296,8 +318,80 @@ use in /etc/, /tmp/, ~/ etc.
 
 but I assume it's bad if it finds stuff
  fix immutable files
-
 > chattr -i file
+
+
+
+
+
+
+
+
+
+
+# idenitifying services running 
+## list services 
+Listing all services could potientially be information overload but skimming it and disabling anything that seems not needed could be useful 
+> systemctl list-unit-files --type=service
+
+how to disable 
+ > systemctl disable httpd.service
+	
+## listening ports 
+This will show all ports listening on the machine. you will use this information to set host firewall rules. find the ports the machine's critical services are running on and take note of it. 
+
+> netstat -tulpn
+
+> ss -tulpn
+
+
+
+
+# breathe 
+
+We made some cool progress and did the major stuff. relax for like 15 seconds. then move on . our next goal is to get some baseline knowledge of what the system is like before getting hacked. 
+
+
+# round up of comman service stuff to look at 
+# ssh stuff
+
+ **/etc/ssh/sshd_config**
+```
+PermitRootLogin no # disables root loginMaxAuthTries 3 # limits authentication attemptsPasswordAuthentication no # disables password authenticationPermitEmptyPasswords no # disables empty passwordsX11Forwarding no # disables GUI transmissionDebianBanner no # disbales verbose bannerAllowUsers *@XXX.X.XXX.0/24 # restrict users to an IP range
+```
+
+
+Check these files and make sure they are blank / only have information that you put there. These store public keys that are authorized to log in as this user WITHOUT password.
+> ~/.ssh/authorized_keys
+
+>/root/.ssh/authorized_keys
+
+if you see stuff in this directory of the user home directory problably want to delete. 
+
+
+
+
+
+
+
+# monitor logs
+-   /var/log/auth.log --- logs authorization attempts
+-   /var/log/daemon.log --- logs background apps
+-   /var/log/debug --- logs debugging data
+-   /var/log/kern.log --- logs kernel data
+-   /var/log/syslog --- logs system data
+-   /var/log/faillog --- logs failed logins
+
+# final set of less importnat stuff 
+check host files and clear any uneeded stuff :/etc/hosts 
+unalias -a remove aliases 
+
+
+
+maybe try to find an ids to install 
+
+
+
 # todo 
 
 
