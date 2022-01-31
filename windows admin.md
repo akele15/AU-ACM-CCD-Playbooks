@@ -85,6 +85,11 @@ Get-WmiObject win32_useraccount | Foreach-object {
 
 ```
 
+# active directory
+add and disable users in active directory. Same process just in AD this time. 
+https://www.youtube.com/watch?v=piTFGytM1es
+
+
 
 # patch time
 
@@ -121,6 +126,28 @@ https://www.youtube.com/watch?v=A2jXQPprVXQ
 Remove firewall exceptions 
 https://www.youtube.com/watch?v=azGWLDLM3sc
 
+## commandline firewall commands
+**Important:** You only want to run the reset command if you are local to the box
+
+```
+netsh advfirewall reset
+```
+
+```
+netsh advfirewall firewall delete rule *
+netsh advfirewall firewall add rule dir=in action=allow protocol=tcp localport=3389 name=”Allow-TCP-3389-RDP”
+```
+
+```
+netsh advfirewall firewall add rule dir=in action=allow protocol=icmpv4 name=”Allow ICMP V4”
+netsh advfirewall set domainprofile firewallpolicy blockinbound,allowoutbound
+netsh advfirewall set privateprofile firewallpolicy blockinbound,allowoutbound
+netsh advfirewall set publicprofile firewallpolicy blockinbound,allowoutbound
+netsh advfirewall set allprofile state on
+
+```
+
+
 
 ## turn on windows defender
 https://www.youtube.com/watch?v=MqcFLabRc10
@@ -155,92 +182,77 @@ sc stop <serviceName>
 
 ```
 
+# configure AD group policy
+https://www.youtube.com/watch?v=piTFGytM1es
+
+
+## Security Options
+```
+-   Network security: LAN Manager authentication level - Send NTLMv2  response only\refuse NTLM & LM
+    
+-   Network security: Do not store LAN Manager hash value on next password change - Enabled
+    
+-   Network access: Do not allow anonymous enumeration of SAM accounts and shares - Enabled
+    
+-   Network access: Do not allow anonymous enumeration of SAM accounts - Enabled
+    
+-   Network access: Allow anonymous SID/name translation - Disabled
+    
+-   Accounts: Rename administrator account - Rename to something unique (but remember it)
+    
+-   Interactive logon: Message text for users attempting to log on - sometimes an inject
+```
+
+
+```
+-   Audit process tracking - Successes
+    
+-   Audit account management - Successes, Failures
+    
+-   Audit logon events - Successes, Failures
+    
+-   Audit account logon events - Successes, Failures
+```
+```
+1. Create a GPO: Account Lockout
+2.  Create a GPO: Enabling Verbose PowerShell Logging and Transcription
+```
+
+
+Configure local policies (Work in progress)
+
+
+Secpol.msc
+```
+Security Settings>Account Policies>Account Lockout Policy Account Lockout Duration: 30min Account Lockout threshold: 2 failed logins Reset account lockout counter after: 30 mins
+
+Local Policies>Audit Policy Enable all for failure and success
+
+
+
+```
+
+
+
 ### turn off teredo 
 is maybe just a windows 10 feature?
 ```
 netsh interface teredo set state disabled
 ```
-# installing anti virus time
-install AVG for whatever version of windows is running. 
 
+Disable SMB
 
-## run winpeas to look for more things to fix
-
-https://github.com/carlospolop/PEASS-ng/blob/master/winPEAS/winPEASbat/winPEAS.bat
-
-
-# process explorer
-https://docs.microsoft.com/en-us/sysinternals/downloads/process-explorer
-
-if you see notepad.exe something is wrong. if you see 
-
-
-# stuff
-### [](https://github.com/mike-bailey/CCDC-Scripts/blob/master/WINDOWS.md#turns-off-remote-desktop)Turns off Remote Desktop
-https://www.youtube.com/watch?v=QZEna-w-SEQ
-`reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f`
-
-`reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f`
-
-First, we flush the cache the traditional way. This is a common IT troubleshooting step if you have slow connectivity or other issues, by the way. `ipconfig /flushdns`
-
-`net start` which displays running services, would be written to `servicestarted.txt` when run like this.
-# active directory stuff
-
-1. Create a GPO: Account Lockout
-2.  Create a GPO: Enabling Verbose PowerShell Logging and Transcription
-
-
-if newer than windows 8 turn on defender & firewall and remove exceptions 
-
-# actual stuff I wrote
-
-
-```
-
-# Enable Windows Firewall and allow some ports through
-
-**Important:** You only want to run the reset command if you are local to the box
-
-```
-netsh advfirewall reset
-```
-
-```
-netsh advfirewall firewall delete rule *
-netsh advfirewall firewall add rule dir=in action=allow protocol=tcp localport=3389 name=”Allow-TCP-3389-RDP”
-```
-
-```
-netsh advfirewall firewall add rule dir=in action=allow protocol=icmpv4 name=”Allow ICMP V4”
-netsh advfirewall set domainprofile firewallpolicy blockinbound,allowoutbound
-netsh advfirewall set privateprofile firewallpolicy blockinbound,allowoutbound
-netsh advfirewall set publicprofile firewallpolicy blockinbound,allowoutbound
-netsh advfirewall set allprofile state on
-
-```
-
-
-Check for any logged on users
-
-```
-Query session
-Query user
-Query process
-
-
-
-
-Setup for Powershell Scripts
-
-Powershell commands
-
-```
-Set-executionpolicy bypass -force
-Disable-psremoting -force
-Clear-item -path wsman:\localhost\client\trustedhosts -force
-Add-windowsfeature powershell-ise
-```
+-   Win 7 way is
+    
+    ```
+    Get-Item HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters | ForEach-Object {Get-ItemProperty $_.pspath}
+    ```
+    
+    ```
+    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" SMB1 -Type DWORD -Value 0 -Force 
+    ```
+    
+    Then restart
 
 Enable and set to highest setting UAC
 
@@ -263,37 +275,31 @@ Control appwiz.cpl
 ```
 
 
-
-Make sure Antivirus is installed!
-
-
-Configure local policies (Work in progress)
-
-```
-Secpol.msc
-```
-
-Security Settings>Account Policies>Account Lockout Policy Account Lockout Duration: 30min Account Lockout threshold: 2 failed logins Reset account lockout counter after: 30 mins
-
-Local Policies>Audit Policy Enable all for failure and success
+# installing anti virus time
+install AVG for whatever version of windows is running. 
 
 
+## run winpeas to look for more things to fix
 
-Disable SMB
+https://github.com/carlospolop/PEASS-ng/blob/master/winPEAS/winPEASbat/winPEAS.bat
 
--   Win 7 way is
-    
-    ```
-    Get-Item HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters | ForEach-Object {Get-ItemProperty $_.pspath}
-    ```
-    
-    ```
-    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" SMB1 -Type DWORD -Value 0 -Force 
-    ```
-    
-    Then restart
 
-	
+# process explorer
+https://docs.microsoft.com/en-us/sysinternals/downloads/process-explorer
+
+if you see notepad.exe something is wrong. if you see 
+
+
+### [](https://github.com/mike-bailey/CCDC-Scripts/blob/master/WINDOWS.md#turns-off-remote-desktop)Turns off Remote Desktop
+https://www.youtube.com/watch?v=QZEna-w-SEQ
+`reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f`
+
+`reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f`
+
+First, we flush the cache the traditional way. This is a common IT troubleshooting step if you have slow connectivity or other issues, by the way. `ipconfig /flushdns`
+
+`net start` which displays running services, would be written to `servicestarted.txt` when run like this.
+
 Get these tools onto the machine
 
 -   Sysinternals
@@ -306,15 +312,43 @@ Get these tools onto the machine
 -   [**Microsoft Security Compliance Toolkit 1.0**](https://www.microsoft.com/en-us/download/details.aspx?id=55319)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
  # [](https://github.com/WGU-CCDC/Blue-Team-Tools/blob/main/Windows/CCDCprep/checklist/DiscoverySteps.md#windows-intrusion-discovery)
 
 # Windows Intrusion Discovery / patrol route
 
 ## goal: look for weird stuff. 
 
+
+Check for any logged on users
+
+```
+Query session
+Query user
+Query process
+
+```
+
+
 Using the GUI, run Task Manager:
 
 `C:\> taskmgr.exe`
+or process explorer
 
 Using the command prompt:
 
